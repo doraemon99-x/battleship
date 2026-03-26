@@ -20,21 +20,21 @@ api_hash = os.getenv("API_HASH")
 bot_token = os.getenv("BOT_TOKEN")
 
 if not api_id:
-    raise ValueError("API_ID belum diset di environment variables")
+    raise ValueError("API_ID belum diset")
 
 api_id = int(api_id)
 
 client = TelegramClient("bot", api_id, api_hash).start(bot_token=bot_token)
 
 # =========================
-# PATH
+# TEMP STORAGE (Spaces friendly)
 # =========================
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = "/tmp"
 
-VIDEO_DIR = os.path.join(BASE, "downloads", "videos")
-IMAGE_DIR = os.path.join(BASE, "downloads", "images")
-XNXX_DIR = os.path.join(BASE, "downloads", "xnxx")
+VIDEO_DIR = os.path.join(BASE, "videos")
+IMAGE_DIR = os.path.join(BASE, "images")
+XNXX_DIR = os.path.join(BASE, "xnxx")
 
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -48,7 +48,6 @@ USER_AGENTS = [
 "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
 "Mozilla/5.0 (X11; Linux x86_64)",
-"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)",
 "Mozilla/5.0 (Linux; Android 13)"
 ]
 
@@ -63,36 +62,55 @@ def headers():
 # =========================
 
 def download_file(url, path):
+
     r = requests.get(url, headers=headers(), stream=True)
+
     with open(path, "wb") as f:
         for chunk in r.iter_content(1024):
             if chunk:
                 f.write(chunk)
 
 # =========================
+# CLEAN FILE
+# =========================
+
+def cleanup(path):
+
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except:
+        pass
+
+# =========================
 # TIKTOK
 # =========================
 
 def get_tiktok(url):
+
     try:
+
         r = requests.get(
             "https://tikwm.com/api/",
             params={"url": url},
             headers=headers()
         )
+
         return r.json()["data"]
+
     except:
+
         return None
 
 
 async def handle_tt(event, url):
 
-    await event.reply("🔎 Fetching TikTok...")
+    await event.reply("Fetching TikTok...")
 
     data = get_tiktok(url)
 
     if not data:
-        await event.reply("❌ Tidak bisa mengambil video")
+        await event.reply("Gagal mengambil video")
         return
 
     if data.get("images"):
@@ -109,6 +127,9 @@ async def handle_tt(event, url):
 
         await client.send_file(event.chat_id, files)
 
+        for f in files:
+            cleanup(f)
+
     else:
 
         video = data["play"]
@@ -118,6 +139,8 @@ async def handle_tt(event, url):
         download_file(video, path)
 
         await client.send_file(event.chat_id, path)
+
+        cleanup(path)
 
 # =========================
 # X / TWITTER
@@ -136,19 +159,15 @@ def get_x_data(url):
 
 async def handle_x(event, url):
 
-    await event.reply("🔎 Fetching X media...")
+    await event.reply("Fetching X media...")
 
     data = get_x_data(url)
 
     if not data:
-        await event.reply("❌ Media tidak ditemukan")
+        await event.reply("Media tidak ditemukan")
         return
 
     media_list = data.get("media_extended", [])
-
-    if not media_list:
-        await event.reply("❌ Tidak ada media")
-        return
 
     files = []
 
@@ -166,32 +185,21 @@ async def handle_x(event, url):
 
             files.append(path)
 
-        elif media["type"] == "video":
-
-            m3u8 = media["url"]
-
-            path = os.path.join(VIDEO_DIR, f"{tweet_id}.mp4")
-
-            subprocess.run([
-                "ffmpeg",
-                "-loglevel","error",
-                "-y",
-                "-i",m3u8,
-                "-c","copy",
-                path
-            ])
-
-            files.append(path)
-
     if files:
+
         await client.send_file(event.chat_id, files)
 
+        for f in files:
+            cleanup(f)
+
 # =========================
-# XNXX FUNCTIONS
+# XNXX
 # =========================
 
 def extract_title(url):
+
     path = urlparse(url).path
+
     return path.split("/")[-1]
 
 
@@ -199,7 +207,7 @@ def get_video_stream(url):
 
     try:
 
-        r = requests.get(url, headers=headers(), timeout=20)
+        r = requests.get(url, headers=headers())
 
         html = r.text
 
@@ -216,58 +224,23 @@ def get_video_stream(url):
         return (None,None)
 
     except:
+
         return (None,None)
-
-
-def generate_thumbnail(video):
-
-    thumb = video + ".jpg"
-
-    subprocess.run([
-        "ffmpeg",
-        "-y",
-        "-ss","00:00:03",
-        "-i",video,
-        "-vframes","1",
-        "-q:v","2",
-        thumb
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    return thumb
-
-
-def get_video_metadata(video):
-
-    media_info = MediaInfo.parse(video)
-
-    for track in media_info.tracks:
-
-        if track.track_type == "Video":
-
-            duration = int(track.duration / 1000)
-            width = track.width
-            height = track.height
-
-            return duration,width,height
-
-    return 0,0,0
 
 
 async def handle_xn(event, url):
 
-    await event.reply("🔎 Mencari stream video...")
+    await event.reply("Downloading...")
 
     stream_type, stream_url = get_video_stream(url)
 
     if not stream_url:
-        await event.reply("❌ Stream tidak ditemukan")
+        await event.reply("Stream tidak ditemukan")
         return
 
     filename = extract_title(url)
 
     output = os.path.join(XNXX_DIR, filename + ".mp4")
-
-    await event.reply("📥 Downloading video...")
 
     if stream_type == "m3u8":
 
@@ -277,7 +250,6 @@ async def handle_xn(event, url):
             "-y",
             "-i",stream_url,
             "-c","copy",
-            "-bsf:a","aac_adtstoasc",
             output
         ])
 
@@ -285,24 +257,9 @@ async def handle_xn(event, url):
 
         download_file(stream_url, output)
 
-    duration,width,height = get_video_metadata(output)
+    await client.send_file(event.chat_id, output)
 
-    thumb = generate_thumbnail(output)
-
-    await client.send_file(
-        event.chat_id,
-        output,
-        thumb=thumb,
-        supports_streaming=True,
-        attributes=[
-            DocumentAttributeVideo(
-                duration=duration,
-                w=width,
-                h=height,
-                supports_streaming=True
-            )
-        ]
-    )
+    cleanup(output)
 
 # =========================
 # COMMANDS
@@ -313,9 +270,9 @@ async def start(event):
 
     await event.reply(
         "Downloader Bot\n\n"
-        "/tt <link> → TikTok\n"
-        "/x <link> → X/Twitter\n"
-        "/xn <link> → XNXX"
+        "/tt <link>\n"
+        "/x <link>\n"
+        "/xn <link>"
     )
 
 
@@ -323,6 +280,7 @@ async def start(event):
 async def tt(event):
 
     url = event.message.text.split(" ",1)[1]
+
     await handle_tt(event, url)
 
 
@@ -330,6 +288,7 @@ async def tt(event):
 async def x(event):
 
     url = event.message.text.split(" ",1)[1]
+
     await handle_x(event, url)
 
 
@@ -337,14 +296,17 @@ async def x(event):
 async def xn(event):
 
     url = event.message.text.split(" ",1)[1]
+
     await handle_xn(event, url)
 
 # =========================
-# RUN BOT + WEB SERVER
+# WEB SERVER (for Spaces)
 # =========================
 
 def run_bot():
+
     print("Bot running...")
+
     client.run_until_disconnected()
 
 
