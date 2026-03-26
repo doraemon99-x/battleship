@@ -1,5 +1,5 @@
 telethon
 requests
 pymediainfo
-cryptg
 flask
+ffmpeg-python
