@@ -3,7 +3,10 @@ import requests
 import subprocess
 import random
 import re
+import threading
 from urllib.parse import urlparse
+from flask import Flask
+
 from telethon import TelegramClient, events
 from telethon.tl.types import DocumentAttributeVideo
 from pymediainfo import MediaInfo
@@ -12,9 +15,14 @@ from pymediainfo import MediaInfo
 # TELEGRAM CONFIG
 # =========================
 
-api_id = int(os.getenv("API_ID"))
+api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
 bot_token = os.getenv("BOT_TOKEN")
+
+if not api_id:
+    raise ValueError("API_ID belum diset di environment variables")
+
+api_id = int(api_id)
 
 client = TelegramClient("bot", api_id, api_hash).start(bot_token=bot_token)
 
@@ -55,9 +63,7 @@ def headers():
 # =========================
 
 def download_file(url, path):
-
     r = requests.get(url, headers=headers(), stream=True)
-
     with open(path, "wb") as f:
         for chunk in r.iter_content(1024):
             if chunk:
@@ -68,7 +74,6 @@ def download_file(url, path):
 # =========================
 
 def get_tiktok(url):
-
     try:
         r = requests.get(
             "https://tikwm.com/api/",
@@ -186,7 +191,6 @@ async def handle_x(event, url):
 # =========================
 
 def extract_title(url):
-
     path = urlparse(url).path
     return path.split("/")[-1]
 
@@ -199,13 +203,11 @@ def get_video_stream(url):
 
         html = r.text
 
-        # HLS
         m3u8 = re.search(r'https://[^"\']+\.m3u8[^"\']*', html)
 
         if m3u8:
             return ("m3u8", m3u8.group(0))
 
-        # MP4 fallback
         mp4 = re.search(r'https://[^"\']+\.mp4[^"\']*', html)
 
         if mp4:
@@ -337,7 +339,22 @@ async def xn(event):
     url = event.message.text.split(" ",1)[1]
     await handle_xn(event, url)
 
+# =========================
+# RUN BOT + WEB SERVER
+# =========================
 
-print("Bot running...")
+def run_bot():
+    print("Bot running...")
+    client.run_until_disconnected()
 
-client.run_until_disconnected()
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Telegram Downloader Bot Running"
+
+
+threading.Thread(target=run_bot).start()
+
+app.run(host="0.0.0.0", port=7860)
