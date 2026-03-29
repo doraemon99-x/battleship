@@ -1,32 +1,21 @@
 import os
 import asyncio
 import requests
-import subprocess
 import random
-import re
-import threading
-from urllib.parse import urlparse
-from flask import Flask
-
 from telethon import TelegramClient, events
 
 # =========================
 # TELEGRAM CONFIG
 # =========================
 
-api_id = os.getenv("API_ID")
+api_id = int(os.getenv("API_ID"))
 api_hash = os.getenv("API_HASH")
 bot_token = os.getenv("BOT_TOKEN")
-
-if not api_id:
-    raise ValueError("API_ID belum diset di Secrets")
-
-api_id = int(api_id)
 
 client = TelegramClient("bot", api_id, api_hash)
 
 # =========================
-# TEMP STORAGE (Spaces safe)
+# TEMP STORAGE
 # =========================
 
 BASE = "/tmp"
@@ -66,10 +55,6 @@ def download_file(url, path):
             if chunk:
                 f.write(chunk)
 
-# =========================
-# CLEAN FILE
-# =========================
-
 def cleanup(path):
 
     try:
@@ -85,7 +70,6 @@ def cleanup(path):
 def get_tiktok(url):
 
     try:
-
         r = requests.get(
             "https://tikwm.com/api/",
             params={"url": url},
@@ -95,7 +79,6 @@ def get_tiktok(url):
         return r.json()["data"]
 
     except:
-
         return None
 
 
@@ -218,36 +201,16 @@ async def x(event):
     await handle_x(event, url)
 
 # =========================
-# RUN TELEGRAM BOT
+# RUN BOT
 # =========================
 
-async def start_bot():
+async def main():
 
     await client.start(bot_token=bot_token)
 
-    print("Bot running...")
+    print("Bot running on Koyeb 🚀")
 
     await client.run_until_disconnected()
 
 
-def run_bot():
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    loop.run_until_complete(start_bot())
-
-# =========================
-# FLASK SERVER (Spaces)
-# =========================
-
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Telegram Downloader Bot Running"
-
-
-threading.Thread(target=run_bot).start()
-
-app.run(host="0.0.0.0", port=7860)
+asyncio.run(main())
