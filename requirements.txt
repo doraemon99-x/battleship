@@ -1,5 +1,3 @@
 telethon
 requests
 pymediainfo
-flask
-ffmpeg-python
