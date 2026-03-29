@@ -1,8 +1,10 @@
 import os
 import asyncio
 import requests
+import subprocess
 import random
 from telethon import TelegramClient, events
+from telethon.tl.types import DocumentAttributeVideo
 
 # =========================
 # TELEGRAM CONFIG
@@ -38,9 +40,7 @@ USER_AGENTS = [
 ]
 
 def headers():
-    return {
-        "User-Agent": random.choice(USER_AGENTS)
-    }
+    return {"User-Agent": random.choice(USER_AGENTS)}
 
 # =========================
 # DOWNLOAD
@@ -64,12 +64,62 @@ def cleanup(path):
         pass
 
 # =========================
+# VIDEO METADATA (FFPROBE)
+# =========================
+
+def get_video_metadata(video):
+
+    try:
+
+        cmd = [
+            "ffprobe",
+            "-v","error",
+            "-select_streams","v:0",
+            "-show_entries",
+            "stream=width,height,duration",
+            "-of","default=noprint_wrappers=1:nokey=1",
+            video
+        ]
+
+        result = subprocess.check_output(cmd).decode().split()
+
+        width = int(result[0])
+        height = int(result[1])
+        duration = int(float(result[2]))
+
+        return duration,width,height
+
+    except:
+
+        return 0,0,0
+
+# =========================
+# THUMBNAIL
+# =========================
+
+def generate_thumbnail(video):
+
+    thumb = video + ".jpg"
+
+    subprocess.run([
+        "ffmpeg",
+        "-y",
+        "-ss","00:00:02",
+        "-i",video,
+        "-frames:v","1",
+        thumb
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    return thumb
+
+# =========================
 # TIKTOK
 # =========================
 
 def get_tiktok(url):
 
     try:
+
         r = requests.get(
             "https://tikwm.com/api/",
             params={"url": url},
@@ -79,6 +129,7 @@ def get_tiktok(url):
         return r.json()["data"]
 
     except:
+
         return None
 
 
@@ -89,7 +140,7 @@ async def handle_tt(event, url):
     data = get_tiktok(url)
 
     if not data:
-        await event.reply("Gagal mengambil video")
+        await event.reply("Failed to fetch video")
         return
 
     if data.get("images"):
@@ -117,9 +168,27 @@ async def handle_tt(event, url):
 
         download_file(video, path)
 
-        await client.send_file(event.chat_id, path)
+        thumb = generate_thumbnail(path)
+
+        duration,width,height = get_video_metadata(path)
+
+        await client.send_file(
+            event.chat_id,
+            path,
+            thumb=thumb,
+            supports_streaming=True,
+            attributes=[
+                DocumentAttributeVideo(
+                    duration=duration,
+                    w=width,
+                    h=height,
+                    supports_streaming=True
+                )
+            ]
+        )
 
         cleanup(path)
+        cleanup(thumb)
 
 # =========================
 # X / TWITTER
@@ -143,7 +212,7 @@ async def handle_x(event, url):
     data = get_x_data(url)
 
     if not data:
-        await event.reply("Media tidak ditemukan")
+        await event.reply("Media not found")
         return
 
     media_list = data.get("media_extended", [])
@@ -163,6 +232,42 @@ async def handle_x(event, url):
             download_file(img, path)
 
             files.append(path)
+
+        elif media["type"] == "video":
+
+            video_url = media["url"]
+
+            path = os.path.join(VIDEO_DIR, f"{tweet_id}.mp4")
+
+            subprocess.run([
+                "ffmpeg",
+                "-y",
+                "-i",video_url,
+                "-c","copy",
+                path
+            ])
+
+            thumb = generate_thumbnail(path)
+
+            duration,width,height = get_video_metadata(path)
+
+            await client.send_file(
+                event.chat_id,
+                path,
+                thumb=thumb,
+                supports_streaming=True,
+                attributes=[
+                    DocumentAttributeVideo(
+                        duration=duration,
+                        w=width,
+                        h=height,
+                        supports_streaming=True
+                    )
+                ]
+            )
+
+            cleanup(path)
+            cleanup(thumb)
 
     if files:
 
