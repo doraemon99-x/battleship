@@ -3,6 +3,8 @@ import asyncio
 import requests
 import subprocess
 import random
+import threading
+from flask import Flask
 from telethon import TelegramClient, events
 from telethon.tl.types import DocumentAttributeVideo
 
@@ -64,7 +66,7 @@ def cleanup(path):
         pass
 
 # =========================
-# VIDEO METADATA (FFPROBE)
+# VIDEO METADATA
 # =========================
 
 def get_video_metadata(video):
@@ -90,7 +92,6 @@ def get_video_metadata(video):
         return duration,width,height
 
     except:
-
         return 0,0,0
 
 # =========================
@@ -129,7 +130,6 @@ def get_tiktok(url):
         return r.json()["data"]
 
     except:
-
         return None
 
 
@@ -217,21 +217,21 @@ async def handle_x(event, url):
 
     media_list = data.get("media_extended", [])
 
-    files = []
-
     tweet_id = url.split("/")[-1]
 
-    for i, media in enumerate(media_list):
+    for media in media_list:
 
         if media["type"] == "image":
 
             img = media["url"] + "?name=orig"
 
-            path = os.path.join(IMAGE_DIR, f"{tweet_id}_{i}.jpg")
+            path = os.path.join(IMAGE_DIR, f"{tweet_id}.jpg")
 
             download_file(img, path)
 
-            files.append(path)
+            await client.send_file(event.chat_id, path)
+
+            cleanup(path)
 
         elif media["type"] == "video":
 
@@ -269,13 +269,6 @@ async def handle_x(event, url):
             cleanup(path)
             cleanup(thumb)
 
-    if files:
-
-        await client.send_file(event.chat_id, files)
-
-        for f in files:
-            cleanup(f)
-
 # =========================
 # COMMANDS
 # =========================
@@ -306,16 +299,36 @@ async def x(event):
     await handle_x(event, url)
 
 # =========================
-# RUN BOT
+# BOT RUNNER
 # =========================
 
-async def main():
+async def run_bot():
 
     await client.start(bot_token=bot_token)
 
-    print("Bot running on Koyeb 🚀")
+    print("Telegram bot running 🚀")
 
     await client.run_until_disconnected()
 
 
-asyncio.run(main())
+def start_bot():
+
+    asyncio.run(run_bot())
+
+# =========================
+# FLASK SERVER (HEALTHCHECK)
+# =========================
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot running"
+
+# =========================
+# START SERVICES
+# =========================
+
+threading.Thread(target=start_bot).start()
+
+app.run(host="0.0.0.0", port=8000)
